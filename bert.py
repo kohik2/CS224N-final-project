@@ -51,20 +51,27 @@ class BertSelfAttention(nn.Module):
 
     ### TODO
     # Calculate unnormalized attention scores (S matrix)
-    scores = torch.matmul(query, key)
+    scores = torch.matmul(query, key.transpose(-1, -2))
     bs, num_attention_heads, seq_len, seq_len = scores.size()
 
-    # Apply attention mask to mask out padding tokens
-    masked = attention_mask(scores)
+    # Scale the scores
+    # scaled = F.normalize(scores)
+    # scaled = scores / torch.sqrt(scores)
+    dk = query.ndimension()
+    scaled = scores / (dk ** 0.5)
 
-    # Normalize the attention scores using softmax
+    # Apply attention mask to mask out padding tokens
+    masked = scaled * attention_mask
+
+    # Normalize the attention scores using softmax, then apply drop out
     attention_probs = F.softmax(masked, dim=-1)
+    attention_probs = self.dropout(attention_probs) #told to do so by Ed
 
     # Multiply attention probabilities with value to get weighted values
     weighted = torch.matmul(attention_probs, value)
 
     # Concatenate multi-heads to recover the original shape
-    proj = weighted.view(bs, seq_len, self.all_head_size)
+    proj = weighted.view(bs, seq_len, self.all_head_size)    
     return proj
 
 
@@ -114,10 +121,12 @@ class BertLayer(nn.Module):
     # Hint: Remember that BERT applies dropout to the transformed output of each sub-layer,
     # before it is added to the sub-layer input and normalized with a layer norm.
     ### TODO
+    # print(input.size())
     post_transform = dense_layer(output)
     post_dropout = dropout(post_transform)
     added = input + post_dropout
     added_norm = ln_layer(added)
+    # print(added_norm.size())
     return added_norm
 
 
@@ -132,23 +141,11 @@ class BertLayer(nn.Module):
     4. An add-norm operation that takes the input and output of the feed forward layer.
     """
     ### TODO
-    # raise NotImplementedError
-    # self.self_attention = BertSelfAttention(config)
-    # # Add-norm for multi-head attention.
-    # self.attention_dense = nn.Linear(config.hidden_size, config.hidden_size)
-    # self.attention_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-    # self.attention_dropout = nn.Dropout(config.hidden_dropout_prob)
-    # # Feed forward.
-    # self.interm_dense = nn.Linear(config.hidden_size, config.intermediate_size)
-    # self.interm_af = F.gelu
-    # # Add-norm for feed forward.
-    # self.out_dense = nn.Linear(config.intermediate_size, config.hidden_size)
-    # self.out_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-    # self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
-    output = self.self_attention.forward(hidden_states, attention_mask)
-    # NEED AN INPUT FOR THE NEXT LINE, WHATS THE "previous"
-    added_norm = self.add_norm(input, output, self.attention_dense, self.attention_dropout, self.attention_layer_norm)
-
+    attn = self.self_attention.forward(hidden_states, attention_mask)
+    added_norm_1 = self.add_norm(hidden_states, attn, self.attention_dense, self.attention_dropout, self.attention_layer_norm)
+    ffd = self.interm_af(self.interm_dense(added_norm_1))
+    added_norm_2 = self.add_norm(added_norm_1, ffd, self.out_dense, self.out_dropout, self.out_layer_norm)
+    return added_norm_2
 
 
 class BertModel(BertPreTrainedModel):
@@ -188,17 +185,11 @@ class BertModel(BertPreTrainedModel):
     seq_length = input_shape[1]
 
     # Get word embedding from self.word_embedding into input_embeds.
-    inputs_embeds = None
-    ### TODO
-    raise NotImplementedError
-
+    inputs_embeds = self.word_embedding(input_ids)
 
     # Use pos_ids to get position embedding from self.pos_embedding into pos_embeds.
     pos_ids = self.position_ids[:, :seq_length]
-    pos_embeds = None
-    ### TODO
-    raise NotImplementedError
-
+    pos_embeds = self.pos_embedding(pos_ids)
 
     # Get token type ids. Since we are not considering token type, this embedding is
     # just a placeholder.
@@ -206,8 +197,10 @@ class BertModel(BertPreTrainedModel):
     tk_type_embeds = self.tk_type_embedding(tk_type_ids)
 
     # Add three embeddings together; then apply embed_layer_norm and dropout and return.
-    ### TODO
-    raise NotImplementedError
+    embedded = inputs_embeds + pos_embeds + tk_type_embeds
+    embedded = self.embed_layer_norm(embedded)
+    embedded = self.embed_dropout(embedded)
+    return embedded
 
 
   def encode(self, hidden_states, attention_mask):
