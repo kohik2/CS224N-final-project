@@ -50,7 +50,22 @@ class BertSelfAttention(nn.Module):
     #   [bs, seq_len, num_attention_heads * attention_head_size = hidden_size].
 
     ### TODO
-    raise NotImplementedError
+    # Calculate unnormalized attention scores (S matrix)
+    scores = torch.matmul(query, key)
+    bs, num_attention_heads, seq_len, seq_len = scores.size()
+
+    # Apply attention mask to mask out padding tokens
+    masked = attention_mask(scores)
+
+    # Normalize the attention scores using softmax
+    attention_probs = F.softmax(masked, dim=-1)
+
+    # Multiply attention probabilities with value to get weighted values
+    weighted = torch.matmul(attention_probs, value)
+
+    # Concatenate multi-heads to recover the original shape
+    proj = weighted.view(bs, seq_len, self.all_head_size)
+    return proj
 
 
   def forward(self, hidden_states, attention_mask):
@@ -99,7 +114,11 @@ class BertLayer(nn.Module):
     # Hint: Remember that BERT applies dropout to the transformed output of each sub-layer,
     # before it is added to the sub-layer input and normalized with a layer norm.
     ### TODO
-    raise NotImplementedError
+    post_transform = dense_layer(output)
+    post_dropout = dropout(post_transform)
+    added = input + post_dropout
+    added_norm = ln_layer(added)
+    return added_norm
 
 
   def forward(self, hidden_states, attention_mask):
@@ -113,7 +132,22 @@ class BertLayer(nn.Module):
     4. An add-norm operation that takes the input and output of the feed forward layer.
     """
     ### TODO
-    raise NotImplementedError
+    # raise NotImplementedError
+    # self.self_attention = BertSelfAttention(config)
+    # # Add-norm for multi-head attention.
+    # self.attention_dense = nn.Linear(config.hidden_size, config.hidden_size)
+    # self.attention_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+    # self.attention_dropout = nn.Dropout(config.hidden_dropout_prob)
+    # # Feed forward.
+    # self.interm_dense = nn.Linear(config.hidden_size, config.intermediate_size)
+    # self.interm_af = F.gelu
+    # # Add-norm for feed forward.
+    # self.out_dense = nn.Linear(config.intermediate_size, config.hidden_size)
+    # self.out_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+    # self.out_dropout = nn.Dropout(config.hidden_dropout_prob)
+    output = self.self_attention.forward(hidden_states, attention_mask)
+    # NEED AN INPUT FOR THE NEXT LINE, WHATS THE "previous"
+    added_norm = self.add_norm(input, output, self.attention_dense, self.attention_dropout, self.attention_layer_norm)
 
 
 
