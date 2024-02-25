@@ -44,7 +44,7 @@ class BertSelfAttention(nn.Module):
     # and padding tokens (with a value of a large negative number).
 
     # Make sure to:
-    # - Scale the scores by divinding by sqrt of dk, the dimensions of key.
+    # - Scale the scores by divinding by sqrt of dk, the dimensions of key. //told to so on Ed
     # - Normalize the scores with softmax.
     # - Multiply the attention scores with the value to get back weighted values.
     # - Before returning, concatenate multi-heads to recover the original shape:
@@ -58,11 +58,12 @@ class BertSelfAttention(nn.Module):
     # Scale the scores
     # scaled = F.normalize(scores)
     # scaled = scores / torch.sqrt(scores)
-    dk = query.dim()
+    dk = key.dim()
     scaled = scores / (dk ** 0.5)
 
     # Apply attention mask to mask out padding tokens
-    masked = scaled + attention_mask
+    # masked = scaled + attention_mask
+    masked = scaled.masked_fill(attention_mask == 0, -1e10)
 
     # Normalize the attention scores using softmax, then apply drop out
     attention_probs = F.softmax(masked, dim=-1)
