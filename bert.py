@@ -53,27 +53,28 @@ class BertSelfAttention(nn.Module):
     ### TODO
     # Calculate unnormalized attention scores (S matrix)
     scores = torch.matmul(query, key.transpose(-1, -2))
-    bs, num_attention_heads, seq_len, seq_len = scores.size()
+    bs, _, seq_len, seq_len = scores.size()
 
     # Scale the scores
-    # scaled = F.normalize(scores)
-    # scaled = scores / torch.sqrt(scores)
-    dk = key.dim()
+    dk = key.size()[-1]
     scaled = scores / (dk ** 0.5)
 
     # Apply attention mask to mask out padding tokens
-    # masked = scaled + attention_mask
-    masked = scaled.masked_fill(attention_mask == 0, -1e10)
+    masked = scaled.masked_fill(attention_mask < 0, -1e10)
 
     # Normalize the attention scores using softmax, then apply drop out
     attention_probs = F.softmax(masked, dim=-1)
     attention_probs = self.dropout(attention_probs) #told to do so by Ed
 
     # Multiply attention probabilities with value to get weighted values
+    # Size: [bs, num_attention_heads, seq_len, hidden_size]
     weighted = torch.matmul(attention_probs, value)
 
     # Concatenate multi-heads to recover the original shape
-    proj = weighted.view(bs, seq_len, self.all_head_size)    
+    # Size: bs, seq_len, num_attention_heads, hidden_size
+    proj = weighted.transpose(1, 2) 
+    # Size: bs, seq_len, hidden_size
+    proj = proj.reshape(bs, seq_len, -1) 
     return proj
 
 
