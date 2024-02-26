@@ -48,7 +48,9 @@ class BertSentimentClassifier(torch.nn.Module):
 
         # Create any instance variables you need to classify the sentiment of BERT embeddings.
         ### TODO
-        raise NotImplementedError
+        # It then classifies the sentence by applying dropout on the pooled output and then projecting it using a linear layer.
+        self.dropout = torch.nn.Dropout(config.attention_probs_dropout_prob)
+        self.linear_layer = torch.nn.Linear(config.hidden_size, self.num_labels)
 
 
     def forward(self, input_ids, attention_mask):
