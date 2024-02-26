@@ -48,9 +48,10 @@ class BertSentimentClassifier(torch.nn.Module):
 
         # Create any instance variables you need to classify the sentiment of BERT embeddings.
         ### TODO
-        # It then classifies the sentence by applying dropout on the pooled output and then projecting it using a linear layer.
+        # From handout: This class classifies the sentence by applying dropout 
+        # on the pooled output and then projecting it using a linear layer.
         self.dropout = torch.nn.Dropout(config.attention_probs_dropout_prob)
-        self.linear_layer = torch.nn.Linear(config.hidden_size, self.num_labels)
+        self.linear_layer = torch.nn.Linear(config.hidden_size, self.num_labels) # currently unsure about size of linear layer
 
 
     def forward(self, input_ids, attention_mask):
@@ -59,7 +60,11 @@ class BertSentimentClassifier(torch.nn.Module):
         # HINT: You should consider what is an appropriate return value given that
         # the training loop currently uses F.cross_entropy as the loss function.
         ### TODO
-        raise NotImplementedError
+        # From handout: This class encodes sentences using BERT and obtains the pooled representation of each sentence.
+        pooled_rep = self.bert(input_ids, attention_mask)['pooler_output'] # Reference BertModel.forward in bert.py
+        pooled_rep = self.dropout(pooled_rep) # From handout: "Apply dropout on pooled output"
+        pooled_rep = self.linear_layer(pooled_rep) # From handout: "Project it using linear layer"
+        return pooled_rep # Unsure if this is the right return or if we're supposed to do smth else here?? 
 
 
 
