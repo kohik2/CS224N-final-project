@@ -30,7 +30,6 @@ class AdamW(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-
         for group in self.param_groups:
             for p in group["params"]:
                 if p.grad is None:
@@ -58,9 +57,22 @@ class AdamW(Optimizer):
                 # 3. Update parameters (p.data).
                 # 4. Apply weight decay after the main gradient-based updates.
                 # Refer to the default project handout for more details.
+                if 't' not in state:
+                    state['t'] = 0
+                    state['m_t'] = 0
+                    state['v_t'] = 0
 
-                ### TODO
-                raise NotImplementedError
+                state['t'] += 1
+                t = state['t']
+                b_1, b_2 = group['betas']
+                m_0 = state['m_t']
+                v_0 = state['v_t']
+                
+                state['m_t'] = b_1 * m_0 + (1 - b_1) * grad 
+                state['v_t'] = b_2 * v_0 + (1 - b_2) * (grad ** 2)
 
+                alpha_t = alpha * ((1 - (b_2 ** t))**0.5) / (1 - (b_1 ** t))
+                p.data = p.data - (alpha_t * state['m_t'] / (state['v_t']**0.5 + group['eps']))
+                p.data = p.data - (group['lr'] * group['weight_decay'] * p.data)          
 
         return loss
