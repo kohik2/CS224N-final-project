@@ -72,7 +72,9 @@ class MultitaskBERT(nn.Module):
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
-        raise NotImplementedError
+        # Copied from classifier.py
+        self.dropout = torch.nn.Dropout(0.1) 
+        self.linear_layer = torch.nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
 
     def forward(self, input_ids, attention_mask):
@@ -82,8 +84,9 @@ class MultitaskBERT(nn.Module):
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        raise NotImplementedError
-
+        # From handout: Invokes your previously implemented BERT model to output sentence embeddings. You can choose to experiment with the contextual 
+        # word embeddings of particular word pieces or extract just the pooler_output as in classifier.py.
+        return self.bert(input_ids, attention_mask)['pooler_output'] # Reference BertModel.forward in bert.py
 
     def predict_sentiment(self, input_ids, attention_mask):
         '''Given a batch of sentences, outputs logits for classifying sentiment.
@@ -92,7 +95,11 @@ class MultitaskBERT(nn.Module):
         Thus, your output should contain 5 logits for each sentence.
         '''
         ### TODO
-        raise NotImplementedError
+        # From the handout: As a baseline, you should call the new forward() method above followed by a dropout and linear layer as in classifier.py.
+        pooled_rep = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        pooled_rep = self.dropout(pooled_rep) # From handout: "Apply dropout on pooled output"
+        pooled_rep = self.linear_layer(pooled_rep) # From handout: "Project it using linear layer"
+        return pooled_rep
 
 
     def predict_paraphrase(self,
@@ -103,7 +110,10 @@ class MultitaskBERT(nn.Module):
         during evaluation.
         '''
         ### TODO
-        raise NotImplementedError
+        cos_similarities = self.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
+        # This produces binary output - 1 if similarity is greater than 0.7 else 0
+        # https://stackoverflow.com/questions/58002836/pytorch-1-if-x-0-5-else-0-for-x-in-outputs-with-tensors
+        return (cos_similarities > 0.7).float()
 
 
     def predict_similarity(self,
@@ -113,7 +123,9 @@ class MultitaskBERT(nn.Module):
         Note that your output should be unnormalized (a logit).
         '''
         ### TODO
-        raise NotImplementedError
+        pooled_rep_1 = self.forward(input_ids=input_ids_1, attention_mask=attention_mask_1)
+        pooled_rep_2 = self.forward(input_ids=input_ids_2, attention_mask=attention_mask_2)
+        return torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
 
 
