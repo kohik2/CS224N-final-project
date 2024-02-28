@@ -73,7 +73,7 @@ class MultitaskBERT(nn.Module):
         # You will want to add layers here to perform the downstream tasks.
         ### TODO
         # Copied from classifier.py
-        self.dropout = torch.nn.Dropout(0.1) 
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob) 
         self.linear_layer = torch.nn.Linear(BERT_HIDDEN_SIZE, N_SENTIMENT_CLASSES)
 
 

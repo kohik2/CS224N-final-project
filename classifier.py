@@ -50,7 +50,7 @@ class BertSentimentClassifier(torch.nn.Module):
         ### TODO
         # From handout: This class classifies the sentence by applying dropout 
         # on the pooled output and then projecting it using a linear layer.
-        self.dropout = torch.nn.Dropout(0.0) # https://edstem.org/us/courses/51053/discussion/4426395
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob) # https://edstem.org/us/courses/51053/discussion/4426395
         self.linear_layer = torch.nn.Linear(config.hidden_size, self.num_labels) # currently unsure about size of linear layer
 
 
