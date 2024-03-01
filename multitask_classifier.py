@@ -182,6 +182,11 @@ def train_multitask(args):
     optimizer = AdamW(model.parameters(), lr=lr)
     best_dev_acc = 0
 
+    # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
+    # See: https://pytorch.org/docs/stable/optim.html
+    # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
@@ -204,6 +209,9 @@ def train_multitask(args):
 
             train_loss += loss.item()
             num_batches += 1
+
+        # Extension: decay the learning rate
+        scheduler.step()
 
         train_loss = train_loss / (num_batches)
 
