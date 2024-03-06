@@ -158,6 +158,7 @@ def train_multitask(args):
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
 
+    # sst set
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
@@ -165,6 +166,17 @@ def train_multitask(args):
                                       collate_fn=sst_train_data.collate_fn)
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
+
+    
+    # sts set
+    sts_train_data = SentencePairDataset(sts_train_data, args)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+
+    sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
+                                         collate_fn=sts_train_data.collate_fn)
+    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=sts_dev_data.collate_fn)
+
 
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
@@ -177,6 +189,7 @@ def train_multitask(args):
 
     model = MultitaskBERT(config)
     model = model.to(device)
+
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -201,7 +214,8 @@ def train_multitask(args):
             b_labels = b_labels.to(device)
 
             optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
+            logits = model.predict_sentiment(b_ids, b_mask)     
+
             loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
             loss.backward()
@@ -209,6 +223,35 @@ def train_multitask(args):
 
             train_loss += loss.item()
             num_batches += 1
+        
+        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            # token_ids, token_type_ids, attention_mask,
+            #     token_ids2, token_type_ids2, attention_mask2,
+            #     labels,sent_ids
+            
+
+            # b_token_ids, b_token_type_ids, b_attention_mask, b_token_ids2, b_token_type_ids2, b_attention_mask2, b_labels, b_sent_ids = batch
+
+            
+
+            b_ids, b_masks, b_labels = (batch['token_ids'], batch['attention_mask'], batch['labels'])
+
+            b_ids = b_ids.to(device)
+            b_masks = b_masks.to(device)
+            b_labels = b_labels.to(device)
+
+            optimizer.zero_grad()
+            logits = model.predict_similarity(b_ids[0], b_masks[0], b_ids[1], b_masks[1]) # changed! 
+            target = b_labels.float()
+
+            loss = F.CosineEmbeddingLoss(logits, target)
+
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+            num_batches += 1
+            
 
         # Extension: decay the learning rate
         scheduler.step()
@@ -223,6 +266,20 @@ def train_multitask(args):
             save_model(model, optimizer, args, config, args.filepath)
 
         print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
+
+
+
+# # cosine_similarity = F.cosine_similarity() 
+#             # if semEval:
+#             # do cosine similarity
+#             # else: loss the way its done below 
+#             loss = None
+#             # semval and sts are the same!!!!
+#             # extension - cosine similarity 
+            
+#             embeddings = model.get_bert_embeddings(b_ids, b_mask) 
+#             loss = F.cosine_similarity(embeddings, b_labels)
+#             ### PUT IN DIFF LOOP!!! 
 
 
 def test_multitask(args):
