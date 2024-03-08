@@ -241,6 +241,9 @@ def train_multitask(args):
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
             target = b_labels.view(-1)
 
+            logits = logits.to(device)
+            target = target.to(device)
+
             loss = F.cosine_embedding_loss(logits.view(1, -1), logits.view(1, -1), target)
 
             loss.backward()
