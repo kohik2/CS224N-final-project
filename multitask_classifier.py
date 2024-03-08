@@ -153,7 +153,8 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = torch.device('mps') if args.use_gpu else torch.device('mps')
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
@@ -224,27 +225,23 @@ def train_multitask(args):
             train_loss += loss.item()
             num_batches += 1
         
-        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            # token_ids, token_type_ids, attention_mask,
-            #     token_ids2, token_type_ids2, attention_mask2,
-            #     labels,sent_ids
-            
+        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):        
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels) = (batch['token_ids_1'], batch['attention_mask_1'],
+                          batch['token_ids_2'], batch['attention_mask_2'],
+                          batch['labels'])
 
-            # b_token_ids, b_token_type_ids, b_attention_mask, b_token_ids2, b_token_type_ids2, b_attention_mask2, b_labels, b_sent_ids = batch
-
-            
-
-            b_ids, b_masks, b_labels = (batch['token_ids'], batch['attention_mask'], batch['labels'])
-
-            b_ids = b_ids.to(device)
-            b_masks = b_masks.to(device)
-            b_labels = b_labels.to(device)
+            b_ids1 = b_ids1.to(device)
+            b_mask1 = b_mask1.to(device)
+            b_ids2 = b_ids2.to(device)
+            b_mask2 = b_mask2.to(device)
 
             optimizer.zero_grad()
-            logits = model.predict_similarity(b_ids[0], b_masks[0], b_ids[1], b_masks[1]) # changed! 
-            target = b_labels.float()
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+            target = b_labels.float().view(-1)
 
-            loss = F.CosineEmbeddingLoss(logits, target)
+            loss = F.cosine_embedding_loss(logits, logits, target)
 
             loss.backward()
             optimizer.step()
@@ -285,7 +282,8 @@ def train_multitask(args):
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        device = torch.device('mps') if args.use_gpu else torch.device('mps')
         saved = torch.load(args.filepath)
         config = saved['model_config']
 
