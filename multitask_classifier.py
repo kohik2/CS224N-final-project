@@ -239,9 +239,9 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            target = b_labels.float().view(-1)
+            target = b_labels.view(-1)
 
-            loss = F.cosine_embedding_loss(logits, logits, target)
+            loss = F.cosine_embedding_loss(logits.view(-1), logits.view(-1), target)
 
             loss.backward()
             optimizer.step()
