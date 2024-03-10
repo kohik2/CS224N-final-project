@@ -242,12 +242,14 @@ def train_multitask(args):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
+            b_sent_ids = b_sent_ids.to(device)
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
             # b_labels = b_labels.flatten().cpu().numpy()
             loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float(), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
+            loss = loss.to(device)
 
             loss.backward()
             optimizer.step()
@@ -267,6 +269,7 @@ def train_multitask(args):
             b_mask1 = b_mask1.to(device)
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
+            b_sent_ids = b_sent_ids.to(device)
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
