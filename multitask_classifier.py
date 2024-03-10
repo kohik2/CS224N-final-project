@@ -153,7 +153,7 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('mps') if args.use_gpu else torch.device('cpu')
+    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
     # device = torch.device('mps') if args.use_gpu else torch.device('mps')
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
@@ -244,8 +244,8 @@ def train_multitask(args):
             logits = logits.to(device)
             target = target.to(device)
 
-            print(logits.dim())
-            print(target.dim())
+            print(logits.size())
+            print(target.size())
 
             loss = F.cosine_embedding_loss(logits.unsqueeze(0), logits.unsqueeze(0), target.unsqueeze(0))
             # [8] 
@@ -275,7 +275,7 @@ def train_multitask(args):
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
-        device = torch.device('mps') if args.use_gpu else torch.device('cpu')
+        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
         # device = torch.device('mps') if args.use_gpu else torch.device('mps')
         saved = torch.load(args.filepath)
         config = saved['model_config']
