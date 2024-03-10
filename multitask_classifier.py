@@ -101,6 +101,11 @@ class MultitaskBERT(nn.Module):
         pooled_rep = self.dropout(pooled_rep) # From handout: "Apply dropout on pooled output"
         pooled_rep = self.linear_layer(pooled_rep) # From handout: "Project it using linear layer"
         return pooled_rep
+    
+    def smart_predict_sentiment(self, embed):
+        pooled_rep = self.dropout(embed) # From handout: "Apply dropout on pooled output"
+        pooled_rep = self.linear_layer(embed) # From handout: "Project it using linear layer"
+        return pooled_rep
 
 
     def predict_paraphrase(self,
@@ -216,7 +221,7 @@ def train_multitask(args):
         train_loss = 0
         num_batches = 0
 
-        smart_loss_sst = SMARTLoss(eval_fn=model.predict_sentiment, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
+        smart_loss_sst = SMARTLoss(eval_fn=model.smart_predict_sentiment, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         print('hi')
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
@@ -229,8 +234,8 @@ def train_multitask(args):
             optimizer.zero_grad()
             logits = model.predict_sentiment(b_ids, b_mask)
             loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
-            model_embed = model.forward(b_ids, b_mask)
-            loss += smart_weight * smart_loss_sst(embed=model_embed, state=logits)
+            embed= model.forward(b_ids, b_mask)
+            loss += smart_weight * smart_loss_sst(embed=embed, state=logits)
 
             loss.backward()
             optimizer.step()
