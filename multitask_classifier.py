@@ -244,14 +244,8 @@ def train_multitask(args):
             logits = logits.to(device)
             target = target.to(device)
 
-            logits.requires_grad=True
+            logits.requires_grad = True # ???? 
             logits = logits.view(args.batch_size, 1)
-
-
-            print(logits.size())
-            print(target.size())
-            print(logits)
-            print(target)
 
             loss = F.cosine_embedding_loss(logits, logits, target)
 
