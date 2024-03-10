@@ -245,7 +245,6 @@ def train_multitask(args):
             target = target.to(device)
 
             logits.requires_grad=True
-            target.requires_grad=True
             logits = logits.view(args.batch_size, 1)
 
 
