@@ -169,7 +169,6 @@ def train_multitask(args):
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
 
-    
     # sts set
     sts_train_data = SentencePairDataset(sts_train_data, args)
     sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
@@ -178,6 +177,15 @@ def train_multitask(args):
                                          collate_fn=sts_train_data.collate_fn)
     sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
                                         collate_fn=sts_dev_data.collate_fn)
+    
+    # para set 
+    para_test_data = SentencePairTestDataset(para_test_data, args)
+    para_dev_data = SentencePairDataset(para_dev_data, args)
+
+    para_train_dataloader = DataLoader(para_test_data, shuffle=True, batch_size=args.batch_size,
+                                          collate_fn=para_test_data.collate_fn)
+    para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
+                                         collate_fn=para_dev_data.collate_fn)
 
 
     # Init model.
@@ -191,7 +199,6 @@ def train_multitask(args):
 
     model = MultitaskBERT(config)
     model = model.to(device)
-
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -207,6 +214,7 @@ def train_multitask(args):
         model.train()
         train_loss = 0
         num_batches = 0
+
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
                                        batch['attention_mask'], batch['labels'])
@@ -227,8 +235,6 @@ def train_multitask(args):
             num_batches += 1
         
 
-
-        
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):        
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -248,7 +254,7 @@ def train_multitask(args):
             logits = logits.to(device)
             target = target.to(device)
 
-            logits.requires_grad = True # ???? 
+            logits.requires_grad = True 
             logits = logits.view(args.batch_size, 1)
 
             loss = F.cosine_embedding_loss(logits, logits, target)
@@ -262,11 +268,22 @@ def train_multitask(args):
 
         # Extension: decay the learning rate
         scheduler.step()
+        train_loss = train_loss / num_batches
 
-        train_loss = train_loss / (num_batches)
+        # train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        # dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        train_sentiment_accuracy,train_sst_y_pred, train_sst_sent_ids, \
+            train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
+            train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader, para_train_dataloader,
+                                                                    sts_train_dataloader, model, device)
+        dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
+            dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
+            dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader, para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+
+        dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
+        train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
 
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
