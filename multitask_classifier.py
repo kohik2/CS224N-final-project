@@ -169,16 +169,16 @@ def train_multitask(args):
     # Randomly sample from the dataset to reduce training time
     # 8,500 to approx match the size of the sst dataset
     para_train_data = random.sample(para_train_data, 8500)
-    para_train_data = SentenceClassificationDataset(para_train_data, args)
-    para_dev_data = SentenceClassificationDataset(para_dev_data, args)
+    para_train_data = SentencePairDataset(para_train_data, args)
+    para_dev_data = SentencePairDataset(para_dev_data, args)
 
     para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
                                         collate_fn=para_train_data.collate_fn)
     para_dev_dataloader = DataLoader(para_dev_data, shuffle=True, batch_size=args.batch_size,
                                         collate_fn=para_dev_data.collate_fn)
 
-    sts_train_data = SentenceClassificationDataset(sts_train_data, args)
-    sts_dev_data = SentenceClassificationDataset(sts_dev_data, args)
+    sts_train_data = SentencePairDataset(sts_train_data, args)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args)
 
     sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
                                         collate_fn=sts_train_data.collate_fn)
