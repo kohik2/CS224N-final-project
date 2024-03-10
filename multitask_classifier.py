@@ -241,16 +241,20 @@ def train_multitask(args):
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
             target = b_labels.view(-1)
 
-            # logits = logits.to(device)
-            # target = target.to(device)
+            logits = logits.to(device)
+            target = target.to(device)
+
+            logits.requires_grad=True
+            target.requires_grad=True
             logits = logits.view(args.batch_size, 1)
+
 
             print(logits.size())
             print(target.size())
             print(logits)
             print(target)
 
-            loss = F.cosine_embedding_loss(logits, logits, target)
+            loss = F.cosine_embedding_loss(logits, logits, target, requires_grad=True)
 
             loss.backward()
             optimizer.step()
