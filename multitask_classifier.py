@@ -111,9 +111,9 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         cos_similarities = self.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
-        # This produces binary output - 1 if similarity is greater than 3.75 similarity score else 0
+        # This produces binary output - 1 if similarity is greater than 0.7 else 0
         # https://stackoverflow.com/questions/58002836/pytorch-1-if-x-0-5-else-0-for-x-in-outputs-with-tensors
-        return (cos_similarities > 3.75).float()
+        return (cos_similarities > 0.7).float()
 
 
     def predict_similarity(self,
@@ -125,9 +125,7 @@ class MultitaskBERT(nn.Module):
         ### TODO
         pooled_rep_1 = self.forward(input_ids=input_ids_1, attention_mask=attention_mask_1)
         pooled_rep_2 = self.forward(input_ids=input_ids_2, attention_mask=attention_mask_2)
-        sims = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
-        # This scales the output to something between 0-5
-        return 5 * F.relu(sims)
+        return torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
 
 
@@ -226,6 +224,9 @@ def train_multitask(args):
 
             train_loss += loss.item()
             num_batches += 1
+        
+
+
         
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):        
             (b_ids1, b_mask1,
