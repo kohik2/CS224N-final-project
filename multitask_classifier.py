@@ -242,7 +242,7 @@ def train_multitask(args):
             target = b_labels.view(-1)
 
             logits = logits.to(device)
-            target = target.to(device)
+            # target = target.to(device)
 
             logits.requires_grad=True
             target.requires_grad=True
