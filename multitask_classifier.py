@@ -153,7 +153,7 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = torch.device('mps') if args.use_gpu else torch.device('cpu')
     # device = torch.device('mps') if args.use_gpu else torch.device('mps')
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
@@ -247,8 +247,8 @@ def train_multitask(args):
             print(logits.dim())
             print(target.dim())
 
-            loss = F.cosine_embedding_loss(logits.unsqueeze(0), logits.unsqueeze(0), target)
-            # [8]
+            loss = F.cosine_embedding_loss(logits, logits, target)
+            # [8] 
 
             loss.backward()
             optimizer.step()
@@ -269,27 +269,13 @@ def train_multitask(args):
             best_dev_acc = dev_acc
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
-
-
-
-# # cosine_similarity = F.cosine_similarity() 
-#             # if semEval:
-#             # do cosine similarity
-#             # else: loss the way its done below 
-#             loss = None
-#             # semval and sts are the same!!!!
-#             # extension - cosine similarity 
-            
-#             embeddings = model.get_bert_embeddings(b_ids, b_mask) 
-#             loss = F.cosine_similarity(embeddings, b_labels)
-#             ### PUT IN DIFF LOOP!!! 
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}") 
 
 
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        device = torch.device('mps') if args.use_gpu else torch.device('cpu')
         # device = torch.device('mps') if args.use_gpu else torch.device('mps')
         saved = torch.load(args.filepath)
         config = saved['model_config']
