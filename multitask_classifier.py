@@ -253,7 +253,7 @@ def train_multitask(args):
             print(logits)
             print(target)
 
-            loss = F.cosine_embedding_loss(logits, logits, target, requires_grad=True)
+            loss = F.cosine_embedding_loss(logits, logits, target)
 
             loss.backward()
             optimizer.step()
