@@ -179,11 +179,11 @@ def train_multitask(args):
                                         collate_fn=sts_dev_data.collate_fn)
     
     # para set 
-    para_test_data = SentencePairTestDataset(para_test_data, args)
+    para_train_data = SentencePairTestDataset(para_train_data, args)
     para_dev_data = SentencePairDataset(para_dev_data, args)
 
-    para_train_dataloader = DataLoader(para_test_data, shuffle=True, batch_size=args.batch_size,
-                                          collate_fn=para_test_data.collate_fn)
+    para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
+                                          collate_fn=para_train_data.collate_fn)
     para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
                                          collate_fn=para_dev_data.collate_fn)
 
