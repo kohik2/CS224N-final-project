@@ -199,7 +199,7 @@ def train_multitask(args):
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = 0
+    best_dev_acc = float('-inf')
 
     # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
     # See: https://pytorch.org/docs/stable/optim.html
