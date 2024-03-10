@@ -284,14 +284,31 @@ def train_multitask(args):
 
         train_loss = train_loss / (num_batches)
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        # train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        # dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+
+        train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids, \
+            train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
+            train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader,
+                                                                    para_train_dataloader,
+                                                                    sts_train_dataloader, model, device)
+
+        dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
+            dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
+            dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+
+        # Get average to evaluate overall performance? Not sure...                                                            
+        train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
+        dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
+        # dev_sts_corr is a number between -1 to 1 so idk how to incorporate it 
 
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train sentiment accuracy :: {train_sentiment_accuracy :.3f}, train_paraphrase_accuracy :: {train_paraphrase_accuracy :.3f}, train_sts_corr :: {train_sts_corr :.3f}, average train accuracy :: {train_acc :.3f}, dev sentiment accuracy :: {dev_sentiment_accuracy :.3f}, dev_paraphrase_accuracy :: {dev_paraphrase_accuracy :.3f}, dev_sts_corr :: {dev_sts_corr :.3f}, dev acc :: {best_dev_acc :.3f}")
 
 
 def test_multitask(args):
