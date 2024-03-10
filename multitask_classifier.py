@@ -310,7 +310,7 @@ def train_multitask(args):
             best_dev_acc = dev_acc
             save_model(model, optimizer, args, config, args.filepath)
 
-        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train sentiment accuracy :: {train_sentiment_accuracy :.3f}, train_paraphrase_accuracy :: {train_paraphrase_accuracy :.3f}, train_sts_corr :: {train_sts_corr :.3f}, average train accuracy :: {train_acc :.3f}, dev sentiment accuracy :: {dev_sentiment_accuracy :.3f}, dev_paraphrase_accuracy :: {dev_paraphrase_accuracy :.3f}, dev_sts_corr :: {dev_sts_corr :.3f}, dev acc :: {best_dev_acc :.3f}")
+        print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
 
 def test_multitask(args):
