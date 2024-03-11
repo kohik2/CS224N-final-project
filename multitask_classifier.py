@@ -120,6 +120,9 @@ class MultitaskBERT(nn.Module):
         # This produces binary output - 1 if similarity is greater than 3.75 similarity score else 0
         # https://stackoverflow.com/questions/58002836/pytorch-1-if-x-0-5-else-0-for-x-in-outputs-with-tensors
         return (cos_similarities > 3.75).float()
+    
+    def smart_predict_paraphrase(self, embed):
+        return (embed > 3.75).float()
 
 
     def predict_similarity(self,
@@ -134,6 +137,9 @@ class MultitaskBERT(nn.Module):
         sims = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
         # This scales the output to something between 0-5
         return 5 * F.relu(sims)
+    
+    def smart_predict_similarity(self, embed):
+        return 5 * F.relu(embed)
 
 
 
@@ -222,7 +228,6 @@ def train_multitask(args):
         num_batches = 0
 
         smart_loss_sst = SMARTLoss(eval_fn=model.smart_predict_sentiment, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
-        print('hi')
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
                                        batch['attention_mask'], batch['labels'])
@@ -245,6 +250,7 @@ def train_multitask(args):
         
         # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
         # For paraphrase task, quora dataset
+        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn=kl_loss, loss_last_fn=sym_kl_loss)
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -261,6 +267,12 @@ def train_multitask(args):
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
             # b_labels = b_labels.flatten().cpu().numpy()
             loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+
+            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
+            loss += smart_weight * smart_loss_para(embed=embed, state=logits)
+
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
             loss.backward()
@@ -270,6 +282,7 @@ def train_multitask(args):
             num_batches += 1
 
         # For textual similarity task, STS dataset
+        smart_loss_sts = SMARTLoss(eval_fn=model.smart_predict_similarity, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -286,6 +299,11 @@ def train_multitask(args):
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
             # b_labels = b_labels.flatten().cpu().numpy()
             loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+
+            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
+            loss += smart_weight * smart_loss_sts(embed=embed, state=logits)
 
             loss.backward()
             optimizer.step()
