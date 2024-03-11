@@ -154,7 +154,7 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = torch.device('mps') if args.use_gpu else torch.device('cpu')
     # device = torch.device('mps') if args.use_gpu else torch.device('mps')
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
@@ -179,7 +179,7 @@ def train_multitask(args):
                                         collate_fn=sts_dev_data.collate_fn)
     
     # para set 
-    para_train_data = SentencePairTestDataset(para_train_data, args)
+    para_train_data = SentencePairDataset(para_train_data, args)
     para_dev_data = SentencePairDataset(para_dev_data, args)
 
     para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
@@ -234,33 +234,6 @@ def train_multitask(args):
             train_loss += loss.item()
             num_batches += 1
         
-        # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
-        # For paraphrase task, quora dataset
-        # from Mhar code 
-        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
-
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
-
-            optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
-            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
-
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item()
-            num_batches += 1
-            
         for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):        
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -321,7 +294,7 @@ def train_multitask(args):
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        device = torch.device('mps') if args.use_gpu else torch.device('cpu')
         # device = torch.device('mps') if args.use_gpu else torch.device('mps')
         saved = torch.load(args.filepath)
         config = saved['model_config']
