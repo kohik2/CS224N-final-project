@@ -13,6 +13,7 @@ writes all required submission files.
 '''
 
 import random, numpy as np, argparse
+from sentence_transformers import SentenceTransformer, losses, InputExample
 from types import SimpleNamespace
 
 import torch
@@ -156,10 +157,13 @@ def train_multitask(args):
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-    # Create the data and its corresponding datasets and dataloader.
-    sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
-    sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
+    # device = torch.device('mps') if args.use_gpu else torch.device('mps')
 
+    # Create the data and its corresponding datasets and dataloader.
+    sst_train_data, num_labels, para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
+    sst_dev_data, num_labels, para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
+
+    # sst set
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
@@ -168,6 +172,25 @@ def train_multitask(args):
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
 
+    # sts set
+    sts_train_data = SentencePairDataset(sts_train_data, args)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+
+    sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
+                                         collate_fn=sts_train_data.collate_fn)
+    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=sts_dev_data.collate_fn)
+    
+    # para set 
+    para_train_data = random.sample(para_train_data, 8500)
+    para_train_data = SentencePairDataset(para_train_data, args)
+    para_dev_data = SentencePairDataset(para_dev_data, args)
+
+    para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
+                                          collate_fn=para_train_data.collate_fn)
+    para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
+                                         collate_fn=para_dev_data.collate_fn)
+    
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
               'num_labels': num_labels,
@@ -194,17 +217,33 @@ def train_multitask(args):
         model.train()
         train_loss = 0
         num_batches = 0
-        for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            b_ids, b_mask, b_labels = (batch['token_ids'],
-                                       batch['attention_mask'], batch['labels'])
+        for batch in tqdm(para_train_dataloader, desc=f'train_para-{epoch}'):
+            # para_ids, para_mask, para_labels = batch_para['token_ids'], batch_para['attention_mask'], batch_para['labels']
+            # para_ids, para_mask, para_labels = para_ids.to(device), para_mask.to(device), para_labels.to(device)
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels) = (batch['token_ids_1'], batch['attention_mask_1'],
+                          batch['token_ids_2'], batch['attention_mask_2'],
+                          batch['labels'])
 
-            b_ids = b_ids.to(device)
-            b_mask = b_mask.to(device)
-            b_labels = b_labels.to(device)
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels) = (b_ids1.to(device), b_mask1.to(device), b_ids2.to(device), b_mask2.to(device), b_labels.to(device))
+            
+            num_negative_samples = len(para_train_data) # ?
+            negative_indices = random.sample(range(len(para_train_data)), num_negative_samples) # ?
+            negative_data = [para_train_data[idx] for idx in negative_indices] # ?
 
+            (neg_b_ids1, neg_b_mask1, # ? 
+            neg_b_ids2, neg_b_mask2)  = negative_data['token_ids_1'], negative_data['attention_mask_1'], negative_data['token_ids_2'], negative_data['attention_mask_2']
+            # How to sample with what labels are, what are the labels? 
+            
             optimizer.zero_grad()
-            logits = model.predict_sentiment(b_ids, b_mask)
-            loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
+            para_pos_logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+            para_neg_logits = model.predict_paraphrase(neg_b_ids1, neg_b_mask1, neg_b_ids2, neg_b_mask2)
+
+            # Compute ranking loss
+            loss = losses.MultipleNegativesRankingLoss(model=model)
 
             loss.backward()
             optimizer.step()
@@ -212,9 +251,10 @@ def train_multitask(args):
             train_loss += loss.item()
             num_batches += 1
 
+
+
         # Extension: decay the learning rate
         scheduler.step()
-
         train_loss = train_loss / (num_batches)
 
         train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
