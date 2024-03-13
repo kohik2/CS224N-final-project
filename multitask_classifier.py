@@ -131,8 +131,6 @@ class MultitaskBERT(nn.Module):
         return 5 * F.relu(sims)
 
 
-
-
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
@@ -146,6 +144,35 @@ def save_model(model, optimizer, args, config, filepath):
 
     torch.save(save_info, filepath)
     print(f"save the model to {filepath}")
+
+# def getPairs(b_ids1, b_ids2, b_mask1, b_mask2):
+#     pairs = []
+#     for i in range(len(b_ids1)):
+#         # Positive pair: (a_i, p_i)
+#         anchor1 = (b_ids1[i], b_mask1[i])
+#         positive1 = (b_ids2[i], b_mask2[i])
+#         pairs.append((anchor1, positive1))
+        
+#         # Form negative pairs (a_i, p_j) for j != i
+#         for j in range(len(b_ids2)):
+#             if j != i:
+#                 anchor2 = (b_ids1[i], b_mask1[i])
+#                 negative = (b_ids2[j], b_mask2[j])
+#                 pairs.append((anchor2, negative))
+#     return pairs
+    # (anchor, positive) and (anchor, negative)
+
+def getPairs(b_ids1, b_ids2, b_mask1, b_mask2):
+    triplets = []
+    for i in range(len(b_ids1)):
+        anchor = (b_ids1[i], b_mask1[i])
+        positive = (b_ids2[i], b_mask2[i])
+        # Form negative pairs (a_i, p_j) for j != i
+        for j in range(len(b_ids2)):
+            if j != i:
+                negative = (b_ids2[j], b_mask2[j])
+                triplets.append((anchor, positive, negative))
+    return triplets
 
 
 def train_multitask(args):
@@ -207,10 +234,13 @@ def train_multitask(args):
     optimizer = AdamW(model.parameters(), lr=lr)
     best_dev_acc = 0
 
+    
     # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
     # See: https://pytorch.org/docs/stable/optim.html
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+
+    loss_function = losses.MultipleNegativesRankingLoss(model=model, scale=5)
 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
@@ -218,8 +248,6 @@ def train_multitask(args):
         train_loss = 0
         num_batches = 0
         for batch in tqdm(para_train_dataloader, desc=f'train_para-{epoch}'):
-            # para_ids, para_mask, para_labels = batch_para['token_ids'], batch_para['attention_mask'], batch_para['labels']
-            # para_ids, para_mask, para_labels = para_ids.to(device), para_mask.to(device), para_labels.to(device)
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
              b_labels) = (batch['token_ids_1'], batch['attention_mask_1'],
@@ -230,25 +258,24 @@ def train_multitask(args):
              b_ids2, b_mask2,
              b_labels) = (b_ids1.to(device), b_mask1.to(device), b_ids2.to(device), b_mask2.to(device), b_labels.to(device))
             
-            num_negative_samples = len(para_train_data) # ?
-            negative_indices = random.sample(range(len(para_train_data)), num_negative_samples) # ?
-            negative_data = [para_train_data[idx] for idx in negative_indices] # ?
-
-            (neg_b_ids1, neg_b_mask1, # ? 
-            neg_b_ids2, neg_b_mask2)  = negative_data['token_ids_1'], negative_data['attention_mask_1'], negative_data['token_ids_2'], negative_data['attention_mask_2']
-            # How to sample with what labels are, what are the labels? 
             
-            optimizer.zero_grad()
-            para_pos_logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            para_neg_logits = model.predict_paraphrase(neg_b_ids1, neg_b_mask1, neg_b_ids2, neg_b_mask2)
+            pairs = getPairs(b_ids1, b_ids2, b_mask1, b_mask2)
+            anchor_ids = torch.stack([pair[0][0] for pair in pairs], dim=0)
+            anchor_mask = torch.stack([pair[0][1] for pair in pairs], dim=0)
+            positive_ids = torch.stack([pair[1][0] for pair in pairs], dim=0)
+            positive_mask = torch.stack([pair[1][1] for pair in pairs], dim=0)
+            negative_ids = torch.stack([pair[2][0] for pair in pairs], dim=0)
+            negative_mask = torch.stack([pair[2][1] for pair in pairs], dim=0)
 
-            # Compute ranking loss
-            loss = losses.MultipleNegativesRankingLoss(model=model)
+
+            # Compute multiple negatives ranking loss
+            loss = loss_function() # (batch_size, embedding_dim) ??? params? 
+        
+            optimizer.zero_grad()
+
 
             loss.backward()
             optimizer.step()
-
-            train_loss += loss.item()
             num_batches += 1
 
 
@@ -257,8 +284,20 @@ def train_multitask(args):
         scheduler.step()
         train_loss = train_loss / (num_batches)
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids, \
+            train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
+            train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader,
+                                                                    para_train_dataloader,
+                                                                    sts_train_dataloader, model, device)
+
+        dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
+            dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
+            dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+                                           
+        train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
+        dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
 
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
