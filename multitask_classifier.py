@@ -219,8 +219,9 @@ def train_multitask(args):
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
     
-    # Using this as an implementation of Multiple Negative Sample Rank Loss (aka NOT using SentenceTransformer.losses)
-    criterion = nn.MarginRankingLoss(margin=1.0)
+    # Using this as an implementation of Multiple Negative Sample Rank Loss,
+    # aka NOT using SentenceTransformer.losses
+    mnsr_loss = nn.MarginRankingLoss(margin=1.0)
 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
@@ -284,10 +285,34 @@ def train_multitask(args):
             target = torch.ones_like(negative_scores)  # Positive pair
             
             # target = torch.ones_like(negative_scores)  # Positive pair
-            loss = criterion(positive_scores, negative_scores, target)
+            loss = mnsr_loss(positive_scores, negative_scores, target)
 
             # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
+
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+            num_batches += 1
+
+        # similarity task, sts dataset
+        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            (b_ids1, b_mask1,
+            b_ids2, b_mask2,
+            b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
+                        batch['token_ids_2'], batch['attention_mask_2'],
+                        batch['labels'], batch['sent_ids'])
+
+            b_ids1 = b_ids1.to(device)
+            b_mask1 = b_mask1.to(device)
+            b_ids2 = b_ids2.to(device)
+            b_mask2 = b_mask2.to(device)
+
+            optimizer.zero_grad()
+            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+            # b_labels = b_labels.flatten().cpu().numpy()
+            loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
             loss.backward()
             optimizer.step()
