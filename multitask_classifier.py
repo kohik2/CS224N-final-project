@@ -130,8 +130,6 @@ class MultitaskBERT(nn.Module):
         return 5 * F.relu(sims)
 
 
-
-
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
@@ -159,7 +157,8 @@ def train_multitask(args):
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
-
+    
+    # sst set
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
@@ -167,6 +166,27 @@ def train_multitask(args):
                                       collate_fn=sst_train_data.collate_fn)
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
+
+    # sts set
+    sts_train_data = SentencePairDataset(sts_train_data, args)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+
+    sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
+                                         collate_fn=sts_train_data.collate_fn)
+    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=sts_dev_data.collate_fn)
+    
+    # para set 
+    para_train_data = random.sample(para_train_data, 8500)
+    para_train_data = SentencePairDataset(para_train_data, args)
+    para_train_data_sampled = random.sample(para_train_data, 8500)
+    para_train_data = SentencePairDataset(para_train_data_sampled, args)
+    para_dev_data = SentencePairDataset(para_dev_data, args)
+
+    para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
+                                          collate_fn=para_train_data.collate_fn)
+    para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
+                                         collate_fn=para_dev_data.collate_fn)
 
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
@@ -188,12 +208,17 @@ def train_multitask(args):
     # See: https://pytorch.org/docs/stable/optim.html
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+    
+    # Using this as an implementation of Multiple Negative Sample Rank Loss (aka NOT using SentenceTransformer.losses)
+    criterion = nn.MarginRankingLoss(margin=1.0)
 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
         num_batches = 0
+        
+        # sentiment task, sst dataset
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
                                        batch['attention_mask'], batch['labels'])
@@ -212,13 +237,47 @@ def train_multitask(args):
             train_loss += loss.item()
             num_batches += 1
 
+        # paraphrase task, para dataset
+        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels) = (batch['token_ids_1'], batch['attention_mask_1'],
+                          batch['token_ids_2'], batch['attention_mask_2'],
+                          batch['labels'])
+
+            (b_ids1, b_mask1,
+             b_ids2, b_mask2,
+             b_labels) = (b_ids1.to(device), b_mask1.to(device), b_ids2.to(device), b_mask2.to(device), b_labels.to(device))
+
+            optimizer.zero_grad()
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+            loss = criterion(logits, b_labels)
+
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item()
+            num_batches += 1
+
         # Extension: decay the learning rate
         scheduler.step()
 
         train_loss = train_loss / (num_batches)
 
-        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids, \
+            train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
+            train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader,
+                                                                    para_train_dataloader,
+                                                                    sts_train_dataloader, model, device)
+
+        dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
+            dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
+            dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
+                                                                    para_dev_dataloader,
+                                                                    sts_dev_dataloader, model, device)
+                                           
+        train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
+        dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
 
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
