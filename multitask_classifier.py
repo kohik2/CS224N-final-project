@@ -265,7 +265,7 @@ def train_multitask(args):
             
             # Hand-coding the MNSR loss calculation below.
             # Generate negative indices
-            negative_indices = generate_negative_pair(len(logits), b_labels)
+            negative_indices = generate_negative_pair(args.batch_size, b_labels)
 
             # Compute multiple negatives ranking loss
             positive_scores = logits.squeeze()
