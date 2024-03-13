@@ -177,6 +177,7 @@ def train_multitask(args):
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    # device = torch.device('mps') if args.use_gpu else torch.device('cpu')  
     # Create the data and its corresponding datasets and dataloader.
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
@@ -267,7 +268,7 @@ def train_multitask(args):
         
         # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
         # For paraphrase task, quora dataset
-        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn=mnsr_loss, loss_last_fn=mnsr_loss)
+        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -282,7 +283,6 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
             # Hand-coding the MNSR loss calculation below.
             # Generate negative indices
@@ -303,15 +303,13 @@ def train_multitask(args):
 
             # Create a target tensor with appropriate size
             target = torch.ones_like(negative_scores)  # Positive pair
-            
             loss = mnsr_loss(positive_scores, negative_scores, target)
+            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
             pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
             pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
-            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
+            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2).to(device)
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
-
-            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
             loss.backward()
             optimizer.step()
@@ -384,6 +382,7 @@ def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
         device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        # device = torch.device('mps') if args.use_gpu else torch.device('cpu')
         saved = torch.load(args.filepath)
         config = saved['model_config']
 
