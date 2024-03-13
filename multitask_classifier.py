@@ -271,9 +271,16 @@ def train_multitask(args):
             positive_scores = logits.squeeze()
             negative_scores = logits[negative_indices].squeeze()
 
-            print(positive_scores.size(), negative_indices.size(), b_labels.size())
+            # Make tensors equal size (pad or truncate)
+            min_size = min(positive_scores.size(0), negative_scores.size(0))
+            positive_scores = positive_scores[:min_size]
+            negative_scores = negative_scores[:min_size]
+
+            # Create a target tensor with appropriate size
+            target = torch.ones_like(negative_scores)  # Positive pair
+            
             # target = torch.ones_like(negative_scores)  # Positive pair
-            loss = criterion(positive_scores, negative_scores, b_labels)
+            loss = criterion(positive_scores, negative_scores, target)
 
             # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
