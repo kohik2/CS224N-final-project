@@ -314,6 +314,8 @@ def train_multitask(args):
             # b_labels = b_labels.flatten().cpu().numpy()
             loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
+            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
+
             loss.backward()
             optimizer.step()
 
