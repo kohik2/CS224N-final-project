@@ -68,7 +68,7 @@ class MultitaskBERT(nn.Module):
         # Pretrain mode does not require updating BERT paramters.
         for param in self.bert.parameters():
             if config.option == 'pretrain':
-                param.requires_grad = False
+                param.requires_grad = True
             elif config.option == 'finetune':
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
