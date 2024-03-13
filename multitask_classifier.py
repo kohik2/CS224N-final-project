@@ -308,7 +308,11 @@ def train_multitask(args):
 
             pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
             pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
-            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2).to(device)
+            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
+
+            logits.requires_grad()
+            embed.requires_grad()
+            
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
 
             loss.backward()
