@@ -263,13 +263,16 @@ def train_multitask(args):
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
             
+            # Hand-coding the MNSR loss calculation below.
             # Generate negative indices
             negative_indices = generate_negative_pair(len(logits), b_labels)
+
             # Compute multiple negatives ranking loss
             positive_scores = logits.squeeze()
             negative_scores = logits[negative_indices].squeeze()
-            # target = torch.ones_like(negative_scores)  # Positive pair
-            loss = criterion(positive_scores, negative_scores, b_labels)
+
+            target = torch.ones_like(negative_scores)  # Positive pair
+            loss = criterion(positive_scores, negative_scores, target)
 
             # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
