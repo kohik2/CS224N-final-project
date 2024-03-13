@@ -272,7 +272,7 @@ def train_multitask(args):
             negative_scores = logits[negative_indices].squeeze()
 
             # Check if either tensor is empty
-            if positive_scores.numel() == 0 or negative_scores.numel() == 0:
+            if positive_scores.dim() == 0 or negative_scores.dim() == 0:
                 continue
 
             # Make tensors equal size (pad or truncate)
