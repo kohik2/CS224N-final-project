@@ -121,6 +121,7 @@ class MultitaskBERT(nn.Module):
         # https://stackoverflow.com/questions/58002836/pytorch-1-if-x-0-5-else-0-for-x-in-outputs-with-tensors
         return (cos_similarities > 3.75).float()
     
+
     def smart_predict_paraphrase(self, embed):
         return (embed > 3.75).float()
 
@@ -142,8 +143,6 @@ class MultitaskBERT(nn.Module):
         return 5 * F.relu(embed)
 
 
-
-
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
         'model': model.state_dict(),
@@ -159,6 +158,16 @@ def save_model(model, optimizer, args, config, filepath):
     print(f"save the model to {filepath}")
 
 
+# Define a helper function to generate negative pairs
+def generate_negative_pair(batch_size, labels):
+    # Assume labels are 0 for non-paraphrase and 1 for paraphrase
+    negative_indices = torch.where(labels == 0)[0]
+
+    # Randomly sample negative indices
+    negative_indices = torch.randperm(negative_indices.size(0))[:batch_size]
+    return negative_indices
+
+
 def train_multitask(args):
     '''Train MultitaskBERT.
 
@@ -172,6 +181,7 @@ def train_multitask(args):
     sst_train_data, num_labels,para_train_data, sts_train_data = load_multitask_data(args.sst_train,args.para_train,args.sts_train, split ='train')
     sst_dev_data, num_labels,para_dev_data, sts_dev_data = load_multitask_data(args.sst_dev,args.para_dev,args.sts_dev, split ='train')
 
+    # sst set
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
 
@@ -179,25 +189,27 @@ def train_multitask(args):
                                       collate_fn=sst_train_data.collate_fn)
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
-
+    
+    # para set 
     # Randomly sample from the dataset to reduce training time
     # 8,500 to approx match the size of the sst dataset
-    para_train_data = random.sample(para_train_data, 8500)
-    para_train_data = SentencePairDataset(para_train_data, args)
+    para_train_data_sampled = random.sample(para_train_data, 8500)
+    para_train_data = SentencePairDataset(para_train_data_sampled, args)
     para_dev_data = SentencePairDataset(para_dev_data, args)
 
     para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=para_train_data.collate_fn)
-    para_dev_dataloader = DataLoader(para_dev_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=para_dev_data.collate_fn)
+                                          collate_fn=para_train_data.collate_fn)
+    para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
+                                         collate_fn=para_dev_data.collate_fn)  
 
+    # sts set
     sts_train_data = SentencePairDataset(sts_train_data, args)
-    sts_dev_data = SentencePairDataset(sts_dev_data, args)
+    sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
 
     sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=sts_train_data.collate_fn)
-    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=sts_dev_data.collate_fn)                                                           
+                                         collate_fn=sts_train_data.collate_fn)
+    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=False, batch_size=args.batch_size,
+                                        collate_fn=sts_dev_data.collate_fn)                                                       
 
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
@@ -222,6 +234,11 @@ def train_multitask(args):
 
     # Run for the specified number of epochs.
     smart_weight = 0.02
+
+    # Using this as an implementation of Multiple Negative Sample Rank Loss,
+    # aka NOT using SentenceTransformer.losses
+    mnsr_loss = nn.MarginRankingLoss(margin=1.0)
+
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
@@ -250,7 +267,7 @@ def train_multitask(args):
         
         # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
         # For paraphrase task, quora dataset
-        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn=kl_loss, loss_last_fn=sym_kl_loss)
+        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn=mnsr_loss, loss_last_fn=mnsr_loss)
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -265,8 +282,29 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+            # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+
+            # Hand-coding the MNSR loss calculation below.
+            # Generate negative indices
+            negative_indices = generate_negative_pair(len(logits), b_labels)
+
+            # Compute multiple negatives ranking loss
+            positive_scores = logits.squeeze()
+            negative_scores = logits[negative_indices].squeeze()
+
+            # Check if either tensor is empty
+            if positive_scores.dim() == 0 or negative_scores.dim() == 0:
+                continue
+
+            # Make tensors equal size (pad or truncate)
+            min_size = min(positive_scores.size(0), negative_scores.size(0))
+            positive_scores = positive_scores[:min_size]
+            negative_scores = negative_scores[:min_size]
+
+            # Create a target tensor with appropriate size
+            target = torch.ones_like(negative_scores)  # Positive pair
+            
+            loss = mnsr_loss(positive_scores, negative_scores, target)
 
             pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
             pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
@@ -297,7 +335,6 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
             loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
             pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
