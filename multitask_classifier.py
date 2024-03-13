@@ -307,8 +307,8 @@ def train_multitask(args):
             loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             # loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
-            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1, requires_grad=True)
-            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2, requires_grad=True)
+            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
             embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
