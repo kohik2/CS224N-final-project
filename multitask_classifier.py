@@ -209,8 +209,8 @@ def train_multitask(args):
                                         collate_fn=sts_dev_data.collate_fn)
     
     # para set 
-    para_train_data = random.sample(para_train_data, 8500)
-    para_train_data = SentencePairDataset(para_train_data, args)
+    para_train_data_sampled = random.sample(para_train_data, 8500)
+    para_train_data = SentencePairDataset(para_train_data_sampled, args)
     para_dev_data = SentencePairDataset(para_dev_data, args)
 
     para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
@@ -240,7 +240,8 @@ def train_multitask(args):
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
-    loss_function = losses.MultipleNegativesRankingLoss(model=model, scale=5)
+    # commented out line below, "model" needs to be a SentenceTransformer but we are using BERT
+    # loss_function = losses.MultipleNegativesRankingLoss(model=model, scale=5) 
 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
