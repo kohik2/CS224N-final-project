@@ -145,6 +145,18 @@ def save_model(model, optimizer, args, config, filepath):
     print(f"save the model to {filepath}")
 
 
+
+# Define a helper function to generate negative pairs
+def generate_negative_pair(batch_size, labels):
+    # Assume labels are 0 for non-paraphrase and 1 for paraphrase
+    negative_indices = torch.where(labels == 0)[0]
+
+    # Randomly sample negative indices
+    negative_indices = torch.randperm(negative_indices.size(0))[:batch_size]
+
+    return negative_indices
+
+
 def train_multitask(args):
     '''Train MultitaskBERT.
 
@@ -250,8 +262,14 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            target = b_labels
-            loss = criterion(logits, target)
+            
+            # Generate negative indices
+            negative_indices = generate_negative_pair(len(logits), b_labels)
+            # Compute multiple negatives ranking loss
+            positive_scores = logits.squeeze()
+            negative_scores = logits[negative_indices].squeeze()
+            # target = torch.ones_like(negative_scores)  # Positive pair
+            loss = criterion(positive_scores, negative_scores, b_labels)
 
             # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
