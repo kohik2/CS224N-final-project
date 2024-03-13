@@ -271,7 +271,7 @@ def train_multitask(args):
             positive_scores = logits.squeeze()
             negative_scores = logits[negative_indices].squeeze()
 
-            print(positive_scores.size(), negative_indices(), b_labels.size())
+            print(positive_scores.size(), negative_indices.size(), b_labels.size())
             # target = torch.ones_like(negative_scores)  # Positive pair
             loss = criterion(positive_scores, negative_scores, b_labels)
 
