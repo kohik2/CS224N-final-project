@@ -280,10 +280,13 @@ def train_multitask(args):
             logits = logits.to(device)
             target = target.to(device)
 
-            logits.requires_grad = True 
-            logits = logits.view(args.batch_size, 1)
+            # logits.requires_grad = True 
+            # logits = logits.view(args.batch_size, 1)
 
-            loss = F.cosine_embedding_loss(logits, logits, target)
+            input1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            input2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+
+            loss = F.cosine_embedding_loss(input1, input2, target)
 
             loss.backward()
             optimizer.step()
