@@ -250,9 +250,16 @@ def train_multitask(args):
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
+            input1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            input2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+            target = b_labels.view(-1)
+            target = torch.where(target == 1, torch.tensor(1), torch.tensor(-1))
+
+
             optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+            loss = F.cosine_embedding_loss(input1, input2, target)
+            # logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+            # loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
             loss.backward()
@@ -276,19 +283,14 @@ def train_multitask(args):
 
             optimizer.zero_grad()
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            target = b_labels.view(-1)
-            target = torch.where(target > 3, torch.tensor(1), torch.tensor(-1))
+            # b_labels = b_labels.flatten().cpu().numpy()
+            loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
-            logits = logits.to(device)
-            target = target.to(device)
-
+            # logits = logits.to(device)
             # logits.requires_grad = True 
             # logits = logits.view(args.batch_size, 1)
 
-            input1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
-            input2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
-
-            loss = F.cosine_embedding_loss(input1, input2, target)
+            
 
             loss.backward()
             optimizer.step()
