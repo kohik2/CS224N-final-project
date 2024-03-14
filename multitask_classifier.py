@@ -293,8 +293,13 @@ def train_multitask(args):
             loss = F.cosine_embedding_loss(input1, input2, target)
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
  
+            # Calculate L2 regularization term
+            reg_loss = 0.0
             for param in model.parameters():
-                loss += 0.01 * torch.norm(param, p=2) ** 2  # Adjust weight decay hyperparameter as needed
+                reg_loss += torch.norm(param, p=2) ** 2
+            
+            # Add regularization term to the loss
+            loss += 0.01 * reg_loss  # Adjust weight decay hyperparameter as needed
 
             loss.backward()
             optimizer.step()
