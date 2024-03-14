@@ -245,6 +245,7 @@ def train_multitask(args):
         train_loss = 0
         num_batches = 0
 
+        # sst data, sentiment task
         smart_loss_sst = SMARTLoss(eval_fn=model.smart_predict_sentiment, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
@@ -318,8 +319,11 @@ def train_multitask(args):
 
             # loss += smart_weight * smart_loss_para(embed=embed, state=logits)
             
-            reg_loss = optimizer.regularization_loss()
-            loss += reg_loss
+            # reg_loss = optimizer.regularization_loss() # did not work because of AdamW
+            # loss += reg_loss
+            
+            for param in model.parameters():
+                loss += 0.01 * torch.norm(param, p=2) ** 2  # Adjust weight decay hyperparameter as needed
 
             loss.backward()
             optimizer.step()
