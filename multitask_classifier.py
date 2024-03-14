@@ -251,9 +251,12 @@ def train_multitask(args):
             b_mask2 = b_mask2.to(device)
 
             input1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
+            input1 = input1.to(device)
             input2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+            input2 = input2.to(device)
             target = b_labels.view(-1)
             target = torch.where(target == 1, torch.tensor(1), torch.tensor(-1))
+            target = target.to(device)
 
 
             optimizer.zero_grad()
