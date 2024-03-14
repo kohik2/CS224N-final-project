@@ -304,17 +304,17 @@ def train_multitask(args):
             # # Create a target tensor with appropriate size
             # target = torch.ones_like(negative_scores)  # Positive pair
             # loss = mnsr_loss(positive_scores, negative_scores, target)
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+            loss = F.binary_cross_entropy_with_logits(input=logits.detach, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
-            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1).to(device)
-            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2).to(device)
+            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1).detach()
+            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2).detach()
             embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
-            print(logits.grad)  # Should be None
-            print(b_labels.grad)  # Should be None
-            print(pooled_rep_1.grad)  # Should be None
-            print(pooled_rep_2.grad)  # Should be None
+            # print(logits.grad)  # Should be None -> was ok
+            # print(b_labels.grad)  # Should be None -> was ok
+            # print(pooled_rep_1.grad)  # Should be None -> was ok
+            # print(pooled_rep_2.grad)  # Should be None -> was ok
 
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
 
