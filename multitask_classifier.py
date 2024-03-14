@@ -250,7 +250,7 @@ def train_multitask(args):
         
         # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
         # For paraphrase task, quora dataset
-        smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn=kl_loss, loss_last_fn=sym_kl_loss)
+        # smart_loss_para = SMARTLoss(eval_fn=model.smart_predict_paraphrase, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -264,15 +264,47 @@ def train_multitask(args):
             b_mask2 = b_mask2.to(device)
 
             optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2).to(device)
 
-            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
-            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
-            embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
-            loss += smart_weight * smart_loss_para(embed=embed, state=logits)
+            # # Hand-coding the MNSR loss calculation below.
+            # # Generate negative indices
+            # negative_indices = generate_negative_pair(len(logits), b_labels)
 
+            # # Compute multiple negatives ranking loss
+            # positive_scores = logits.squeeze()
+            # negative_scores = logits[negative_indices].squeeze()
+
+            # # Check if either tensor is empty
+            # if positive_scores.dim() == 0 or negative_scores.dim() == 0:
+            #     continue
+
+            # # Make tensors equal size (pad or truncate)
+            # min_size = min(positive_scores.size(0), negative_scores.size(0))
+            # positive_scores = positive_scores[:min_size]
+            # negative_scores = negative_scores[:min_size]
+
+            # # Create a target tensor with appropriate size
+            # target = torch.ones_like(negative_scores)  # Positive pair
+            # loss = mnsr_loss(positive_scores, negative_scores, target)
+            loss = F.binary_cross_entropy_with_logits(input=logits.detach(), target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+
+            # pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1).detach()
+            # pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2).detach()
+            # embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
+
+            # print(logits.grad)  # Should be None -> was ok
+            # print(b_labels.grad)  # Should be None -> was ok
+            # print(pooled_rep_1.grad)  # Should be None -> was ok
+            # print(pooled_rep_2.grad)  # Should be None -> was ok
+
+            # loss += smart_weight * smart_loss_para(embed=embed, state=logits)
+            
+            # reg_loss = optimizer.regularization_loss() # did not work because of AdamW
+            # loss += reg_loss
+            
+            for param in model.parameters():
+                loss += 0.01 * torch.norm(param, p=2) ** 2  # Adjust weight decay hyperparameter as needed
+            
             loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
             loss.backward()
