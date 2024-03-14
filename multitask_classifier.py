@@ -285,26 +285,26 @@ def train_multitask(args):
             optimizer.zero_grad()
             logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2).to(device)
 
-            # # Hand-coding the MNSR loss calculation below.
-            # # Generate negative indices
-            # negative_indices = generate_negative_pair(len(logits), b_labels)
+            # Hand-coding the MNSR loss calculation below.
+            # Generate negative indices
+            negative_indices = generate_negative_pair(len(logits), b_labels)
 
-            # # Compute multiple negatives ranking loss
-            # positive_scores = logits.squeeze()
-            # negative_scores = logits[negative_indices].squeeze()
+            # Compute multiple negatives ranking loss
+            positive_scores = logits.squeeze()
+            negative_scores = logits[negative_indices].squeeze()
 
-            # # Check if either tensor is empty
-            # if positive_scores.dim() == 0 or negative_scores.dim() == 0:
-            #     continue
+            # Check if either tensor is empty
+            if positive_scores.dim() == 0 or negative_scores.dim() == 0:
+                continue
 
-            # # Make tensors equal size (pad or truncate)
-            # min_size = min(positive_scores.size(0), negative_scores.size(0))
-            # positive_scores = positive_scores[:min_size]
-            # negative_scores = negative_scores[:min_size]
+            # Make tensors equal size (pad or truncate)
+            min_size = min(positive_scores.size(0), negative_scores.size(0))
+            positive_scores = positive_scores[:min_size]
+            negative_scores = negative_scores[:min_size]
 
-            # # Create a target tensor with appropriate size
-            # target = torch.ones_like(negative_scores)  # Positive pair
-            # loss = mnsr_loss(positive_scores, negative_scores, target)
+            # Create a target tensor with appropriate size
+            target = torch.ones_like(negative_scores)  # Positive pair
+            loss = mnsr_loss(positive_scores, negative_scores, target)
             loss = F.binary_cross_entropy_with_logits(input=logits.detach(), target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             # loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
