@@ -68,7 +68,7 @@ class MultitaskBERT(nn.Module):
         # Pretrain mode does not require updating BERT paramters.
         for param in self.bert.parameters():
             if config.option == 'pretrain':
-                param.requires_grad = True
+                param.requires_grad = False
             elif config.option == 'finetune':
                 param.requires_grad = True
         # You will want to add layers here to perform the downstream tasks.
@@ -307,8 +307,8 @@ def train_multitask(args):
             loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
             # loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
-            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1)
-            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2)
+            pooled_rep_1 = model.forward(input_ids=b_ids1, attention_mask=b_mask1).to(device)
+            pooled_rep_2 = model.forward(input_ids=b_ids2, attention_mask=b_mask2).to(device)
             embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
