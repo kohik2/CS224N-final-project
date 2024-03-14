@@ -312,6 +312,10 @@ def train_multitask(args):
             embed = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
 
             loss += smart_weight * smart_loss_para(embed=embed, state=logits)
+            print(logits.grad)  # Should be None
+            print(b_labels.grad)  # Should be None
+            print(pooled_rep_1.grad)  # Should be None
+            print(pooled_rep_2.grad)  # Should be None
 
             loss.backward()
             optimizer.step()
