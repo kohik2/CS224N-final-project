@@ -206,7 +206,7 @@ def train_multitask(args):
     # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
     # See: https://pytorch.org/docs/stable/optim.html
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, gamma=0.7)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.75)
 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
@@ -233,77 +233,77 @@ def train_multitask(args):
         
         # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
         # For paraphrase task, quora dataset
-        for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
+        # for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+        #     (b_ids1, b_mask1,
+        #      b_ids2, b_mask2,
+        #      b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
+        #                   batch['token_ids_2'], batch['attention_mask_2'],
+        #                   batch['labels'], batch['sent_ids'])
 
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
+        #     b_ids1 = b_ids1.to(device)
+        #     b_mask1 = b_mask1.to(device)
+        #     b_ids2 = b_ids2.to(device)
+        #     b_mask2 = b_mask2.to(device)
 
-            optimizer.zero_grad()
-            logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
-            loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
-            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
+        #     optimizer.zero_grad()
+        #     logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
+        #     # b_labels = b_labels.flatten().cpu().numpy()
+        #     loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+        #     loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
 
-            loss.backward()
-            optimizer.step()
+        #     loss.backward()
+        #     optimizer.step()
 
-            train_loss += loss.item()
-            num_batches += 1
+        #     train_loss += loss.item()
+        #     num_batches += 1
 
         # For textual similarity task, STS dataset
-        for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-            (b_ids1, b_mask1,
-             b_ids2, b_mask2,
-             b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-                          batch['token_ids_2'], batch['attention_mask_2'],
-                          batch['labels'], batch['sent_ids'])
+        # for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
+        #     (b_ids1, b_mask1,
+        #      b_ids2, b_mask2,
+        #      b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
+        #                   batch['token_ids_2'], batch['attention_mask_2'],
+        #                   batch['labels'], batch['sent_ids'])
 
-            b_ids1 = b_ids1.to(device)
-            b_mask1 = b_mask1.to(device)
-            b_ids2 = b_ids2.to(device)
-            b_mask2 = b_mask2.to(device)
+        #     b_ids1 = b_ids1.to(device)
+        #     b_mask1 = b_mask1.to(device)
+        #     b_ids2 = b_ids2.to(device)
+        #     b_mask2 = b_mask2.to(device)
 
-            optimizer.zero_grad()
-            logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-            # b_labels = b_labels.flatten().cpu().numpy()
-            loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
+        #     optimizer.zero_grad()
+        #     logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
+        #     # b_labels = b_labels.flatten().cpu().numpy()
+        #     loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
-            loss.backward()
-            optimizer.step()
+        #     loss.backward()
+        #     optimizer.step()
 
-            train_loss += loss.item()
-            num_batches += 1
+        #     train_loss += loss.item()
+        #     num_batches += 1
 
         # Extension: decay the learning rate
         scheduler.step()
 
         train_loss = train_loss / (num_batches)
 
-        # train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
-        # dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
+        train_acc, train_f1, *_ = model_eval_sst(sst_train_dataloader, model, device)
+        dev_acc, dev_f1, *_ = model_eval_sst(sst_dev_dataloader, model, device)
 
-        train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids, \
-            train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
-            train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader,
-                                                                    para_train_dataloader,
-                                                                    sts_train_dataloader, model, device)
+        # train_sentiment_accuracy, train_sst_y_pred, train_sst_sent_ids, \
+        #     train_paraphrase_accuracy, train_para_y_pred, train_para_sent_ids, \
+        #     train_sts_corr, train_sts_y_pred, train_sts_sent_ids = model_eval_multitask(sst_train_dataloader,
+        #                                                             para_train_dataloader,
+        #                                                             sts_train_dataloader, model, device)
 
-        dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
-            dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
-            dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
-                                                                    para_dev_dataloader,
-                                                                    sts_dev_dataloader, model, device)
+        # dev_sentiment_accuracy,dev_sst_y_pred, dev_sst_sent_ids, \
+        #     dev_paraphrase_accuracy, dev_para_y_pred, dev_para_sent_ids, \
+        #     dev_sts_corr, dev_sts_y_pred, dev_sts_sent_ids = model_eval_multitask(sst_dev_dataloader,
+        #                                                             para_dev_dataloader,
+        #                                                             sts_dev_dataloader, model, device)
 
         # Get average to evaluate overall performance? Not sure...                                                            
-        train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
-        dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
+        # train_acc = (train_sentiment_accuracy + train_paraphrase_accuracy + train_sts_corr) / 3
+        # dev_acc = (dev_sentiment_accuracy + dev_paraphrase_accuracy + dev_sts_corr) / 3
         # dev_sts_corr is a number between -1 to 1 so idk how to incorporate it 
 
         if dev_acc > best_dev_acc:
