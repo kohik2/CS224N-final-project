@@ -183,7 +183,7 @@ def train_multitask(args):
     look at test_multitask below to see how you can use the custom torch `Dataset`s
     in datasets.py to load in examples from the Quora and SemEval datasets.
     '''
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = torch.device('mps') if args.use_gpu else torch.device('cpu')
     # device = torch.device('mps') if args.use_gpu else torch.device('mps')
 
     # Create the data and its corresponding datasets and dataloader.
@@ -241,8 +241,8 @@ def train_multitask(args):
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
 
     # commented out line below, "model" needs to be a SentenceTransformer but we are using BERT
-    # loss_function = losses.MultipleNegativesRankingLoss(model=model, scale=5) 
-
+    
+    loss_function = losses.MultipleNegativesRankingLoss(model=model, scale=5) 
     # Run for the specified number of epochs.
     for epoch in range(args.epochs):
         model.train()
@@ -268,17 +268,16 @@ def train_multitask(args):
             negative_ids = torch.stack([pair[2][0] for pair in pairs], dim=0)
             negative_mask = torch.stack([pair[2][1] for pair in pairs], dim=0)
 
+            anchor_positive_pairs = torch.cat([anchor_embeddings, positive_embeddings], dim=1)
+            anchor_negative_pairs = torch.cat([anchor_embeddings, negative_embeddings], dim=1)
 
-            # Compute multiple negatives ranking loss
-            loss = loss_function() # (batch_size, embedding_dim) ??? params? 
-        
-            optimizer.zero_grad()
-
-
+            # Compute loss
+            loss = loss_function(anchor_positive_pairs, anchor_negative_pairs)
             loss.backward()
             optimizer.step()
-            num_batches += 1
 
+            # Compute multiple negatives ranking loss
+            num_batches += 1
 
 
         # Extension: decay the learning rate
@@ -310,7 +309,7 @@ def train_multitask(args):
 def test_multitask(args):
     '''Test and save predictions on the dev and test sets of all three tasks.'''
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        device = torch.device('mps') if args.use_gpu else torch.device('cpu')
         saved = torch.load(args.filepath)
         config = saved['model_config']
 
