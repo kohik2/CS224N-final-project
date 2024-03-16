@@ -194,7 +194,7 @@ def train_multitask(args):
     # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
     # See: https://pytorch.org/docs/stable/optim.html
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
 
     # Run for the specified number of epochs.
     smart_weight = 0.02
