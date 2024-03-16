@@ -19,6 +19,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from smart_pytorch import SMARTLoss, kl_loss, sym_kl_loss
 
 from bert import BertModel
 from optimizer import AdamW
@@ -101,6 +102,11 @@ class MultitaskBERT(nn.Module):
         pooled_rep = self.linear_layer(pooled_rep) # From handout: "Project it using linear layer"
         return pooled_rep
 
+    def smart_predict_sentiment(self, embed):
+        pooled_rep = self.dropout(embed) # From handout: "Apply dropout on pooled output"
+        pooled_rep = self.linear_layer(embed) # From handout: "Project it using linear layer"
+        return pooled_rep
+
 
     def predict_paraphrase(self,
                            input_ids_1, attention_mask_1,
@@ -111,7 +117,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         cos_similarities = self.predict_similarity(input_ids_1, attention_mask_1, input_ids_2, attention_mask_2)
-        # This produces binary output - 1 if similarity is greater than 3.75 similarity score else 0
+        # This produces binary output - 1 if similarity is greater than 0.7 else 0
         # https://stackoverflow.com/questions/58002836/pytorch-1-if-x-0-5-else-0-for-x-in-outputs-with-tensors
         return (cos_similarities > 3.75).float()
 
@@ -126,7 +132,6 @@ class MultitaskBERT(nn.Module):
         pooled_rep_1 = self.forward(input_ids=input_ids_1, attention_mask=attention_mask_1)
         pooled_rep_2 = self.forward(input_ids=input_ids_2, attention_mask=attention_mask_2)
         sims = torch.cosine_similarity(pooled_rep_1, pooled_rep_2)
-        # This scales the output to something between 0-5
         return 5 * F.relu(sims)
 
 
@@ -168,25 +173,6 @@ def train_multitask(args):
     sst_dev_dataloader = DataLoader(sst_dev_data, shuffle=False, batch_size=args.batch_size,
                                     collate_fn=sst_dev_data.collate_fn)
 
-    # Randomly sample from the dataset to reduce training time
-    # 8,500 to approx match the size of the sst dataset
-    para_train_data = random.sample(para_train_data, 8500)
-    para_train_data = SentencePairDataset(para_train_data, args)
-    para_dev_data = SentencePairDataset(para_dev_data, args)
-
-    para_train_dataloader = DataLoader(para_train_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=para_train_data.collate_fn)
-    para_dev_dataloader = DataLoader(para_dev_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=para_dev_data.collate_fn)
-
-    sts_train_data = SentencePairDataset(sts_train_data, args)
-    sts_dev_data = SentencePairDataset(sts_dev_data, args)
-
-    sts_train_dataloader = DataLoader(sts_train_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=sts_train_data.collate_fn)
-    sts_dev_dataloader = DataLoader(sts_dev_data, shuffle=True, batch_size=args.batch_size,
-                                        collate_fn=sts_dev_data.collate_fn)                                                           
-
     # Init model.
     config = {'hidden_dropout_prob': args.hidden_dropout_prob,
               'num_labels': num_labels,
@@ -201,18 +187,20 @@ def train_multitask(args):
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
-    best_dev_acc = float('-inf')
+    best_dev_acc = 0
 
     # From the handout: PyTorch supports many other optimization algorithms. You can also try varying the learning rate.
     # See: https://pytorch.org/docs/stable/optim.html
     # https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html#torch.optim.lr_scheduler.ExponentialLR 
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.75)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
 
     # Run for the specified number of epochs.
+    smart_weight = 0.02
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
         num_batches = 0
+        smart_loss_sst = SMARTLoss(eval_fn=model.smart_predict_sentiment, loss_fn = kl_loss, loss_last_fn = sym_kl_loss)
         for batch in tqdm(sst_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
             b_ids, b_mask, b_labels = (batch['token_ids'],
                                        batch['attention_mask'], batch['labels'])
@@ -225,61 +213,16 @@ def train_multitask(args):
             logits = model.predict_sentiment(b_ids, b_mask)
             loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
+            embed= model.forward(b_ids, b_mask)
+            loss += smart_weight * smart_loss_sst(embed=embed, state=logits)
+
             loss.backward()
             optimizer.step()
 
             train_loss += loss.item()
             num_batches += 1
         
-        # Note on loss functions: https://edstem.org/us/courses/51053/discussion/4507745
-        # For paraphrase task, quora dataset
-        # for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-        #     (b_ids1, b_mask1,
-        #      b_ids2, b_mask2,
-        #      b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-        #                   batch['token_ids_2'], batch['attention_mask_2'],
-        #                   batch['labels'], batch['sent_ids'])
-
-        #     b_ids1 = b_ids1.to(device)
-        #     b_mask1 = b_mask1.to(device)
-        #     b_ids2 = b_ids2.to(device)
-        #     b_mask2 = b_mask2.to(device)
-
-        #     optimizer.zero_grad()
-        #     logits = model.predict_paraphrase(b_ids1, b_mask1, b_ids2, b_mask2)
-        #     # b_labels = b_labels.flatten().cpu().numpy()
-        #     loss = F.binary_cross_entropy_with_logits(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
-        #     loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
-
-        #     loss.backward()
-        #     optimizer.step()
-
-        #     train_loss += loss.item()
-        #     num_batches += 1
-
-        # For textual similarity task, STS dataset
-        # for batch in tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
-        #     (b_ids1, b_mask1,
-        #      b_ids2, b_mask2,
-        #      b_labels, b_sent_ids) = (batch['token_ids_1'], batch['attention_mask_1'],
-        #                   batch['token_ids_2'], batch['attention_mask_2'],
-        #                   batch['labels'], batch['sent_ids'])
-
-        #     b_ids1 = b_ids1.to(device)
-        #     b_mask1 = b_mask1.to(device)
-        #     b_ids2 = b_ids2.to(device)
-        #     b_mask2 = b_mask2.to(device)
-
-        #     optimizer.zero_grad()
-        #     logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
-        #     # b_labels = b_labels.flatten().cpu().numpy()
-        #     loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
-
-        #     loss.backward()
-        #     optimizer.step()
-
-        #     train_loss += loss.item()
-        #     num_batches += 1
+        
 
         # Extension: decay the learning rate
         scheduler.step()
