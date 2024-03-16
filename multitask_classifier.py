@@ -331,6 +331,9 @@ def train_multitask(args):
             logits = model.predict_similarity(b_ids1, b_mask1, b_ids2, b_mask2)
             loss = F.mse_loss(input=logits, target=b_labels.view(-1).float().to(device), reduction='sum') / args.batch_size
 
+            loss = torch.autograd.Variable(loss, requires_grad=True) # https://discuss.pytorch.org/t/runtimeerror-element-0-of-variables-does-not-require-grad-and-does-not-have-a-grad-fn/11074
+
+
             loss.backward()
             optimizer.step()
 
